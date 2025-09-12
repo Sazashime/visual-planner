@@ -1,0 +1,44 @@
+<!-- templates/index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Garage Tile Planner</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Garage Tile Planner</h1>
+      <p>Enter floor size, generate a grid, paint with tiles, calculate totals.</p>
+    </header>
+
+    <section id="controls">
+      <div class="inputs">
+        <label>Width (m): <input id="width" type="number" min="0.4" step="0.1" value="2.0"></label>
+        <label>Height (m): <input id="height" type="number" min="0.4" step="0.1" value="1.6"></label>
+        <button id="generate">Generate Grid</button>
+        <button id="erase">Eraser</button>
+      </div>
+
+      <div class="palette-wrap">
+        <div id="palette" class="palette"></div>
+        <div id="preview" class="preview">No selection</div>
+      </div>
+    </section>
+
+    <section id="canvas-wrap">
+      <canvas id="gridCanvas"></canvas>
+    </section>
+
+    <section id="actions">
+      <button id="calculate">Calculate</button>
+      <div id="results" class="results"></div>
+      <div class="tip">Tip: order ~5% extra tiles for cutting & fitting.</div>
+    </section>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
