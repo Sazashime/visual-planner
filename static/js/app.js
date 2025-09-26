@@ -168,12 +168,22 @@ calcBtn.addEventListener("click", async () => {
   });
   const data = await resp.json();
   if (data.error) { resultsEl.textContent = data.error; return; }
-  // display results
+
+  // display results using adjusted_counts
   let text = "";
-  for (const [code, qty] of Object.entries(data.counts)) {
-    const price = products[code].price || 0;
-    const subtotal = data.subtotals[code] || (qty*price);
-    text += `${code}: ${qty} tiles × ${price.toFixed(2)} лв = ${subtotal.toFixed(2)} лв\n`;
+  if (data.adjusted_counts) {
+    for (const [code, adjQty] of Object.entries(data.adjusted_counts)) {
+      const price = products[code].price || 0;
+      const subtotal = data.subtotal[code] || (adjQty*price);
+      text += `${code}: ${adjQty} tiles × ${price.toFixed(2)} лв = ${subtotal.toFixed(2)} лв\n`;
+    }
+  } else {
+    // fallback to normal counts
+    for (const [code, qty] of Object.entries(data.counts)) {
+      const price = products[code].price || 0;
+      const subtotal = data.subtotals[code] || (qty*price);
+      text += `${code}: ${qty} tiles × ${price.toFixed(2)} лв = ${subtotal.toFixed(2)} лв\n`;
+    }
   }
   text += `\nTotal: ${data.total.toFixed(2)} лв`;
   resultsEl.textContent = text;
