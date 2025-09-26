@@ -77,7 +77,8 @@ def api_calculate():
     }
     Returns:
     {
-      "counts": {"DUa597": 12, ...},
+      "counts": {"DUa597": 12, ...},           # raw number of grid cells
+      "adjusted_counts": {"DUa653": 10, ...}, # adjusted for real tile size
       "subtotal": {"DUa597": 12*5.99, ...},
       "total": 123.45
     }
@@ -87,25 +88,42 @@ def api_calculate():
         return jsonify({"error": "missing grid"}), 400
 
     grid = data["grid"]
-    tile_size_m = data.get("tile_size_m", TILE_SIZE)
+    grid_tile_size = data.get("tile_size_m", TILE_SIZE)
 
-    counts = {}
+    counts = {}           # raw counts from grid
     total = 0.0
+
+    # Count how many grid cells each tile code occupies
     for row in grid:
         for code in row:
             if code:
                 counts[code] = counts.get(code, 0) + 1
 
+    adjusted_counts = {}
     subtotals = {}
+
     for code, qty in counts.items():
-        price = products.get(code, {}).get("price", 0) or 0
-        subtotal = qty * price
+        prod = products.get(code, {})
+        price = prod.get("price", 0) or 0
+        tile_width, tile_height = prod.get("size", (grid_tile_size, grid_tile_size))
+
+        # Correction factor: how many real tiles are needed to cover same area
+        # (grid_tile_area / actual_tile_area) * qty
+        grid_area = grid_tile_size * grid_tile_size
+        tile_area = tile_width * tile_height
+        correction_factor = grid_area / tile_area if tile_area else 1.0
+
+        adjusted_qty = math.ceil(qty * correction_factor)
+
+        subtotal = adjusted_qty * price
         subtotals[code] = round(subtotal, 2)
         total += subtotal
+        adjusted_counts[code] = adjusted_qty
 
     return jsonify({
         "counts": counts,
-        "subtotals": subtotals,
+        "adjusted_counts": adjusted_counts,
+        "subtotal": subtotals,
         "total": round(total, 2)
     })
 
