@@ -50,35 +50,19 @@ def find_image_for_code(code):
 def index():
     return render_template("index.html")
 
-@app.route("/api/products")
-def api_products():
-    """Return products with resolved image path (if found) and color (mapped to CSS color)."""
-    out = {}
-    for code, data in products.items():
-        img = find_image_for_code(code)
-        color_key = data.get("color", "unknown")
-        css_color = COLOR_MAP.get(color_key, "lightgray")
-        out[code] = {
-            "name": data.get("name"),
-            "price": data.get("price"),
-            "image": img,      # relative to /static
-            "color_key": color_key,
-            "css_color": css_color
-        }
-    return jsonify(out)
-
 @app.route("/api/calculate", methods=["POST"])
 def api_calculate():
     """
     Expects JSON:
     {
       "grid": [["DUa597","DUa597",""], [...]],
-      "tile_size_m": 0.4   # optional (defaults to TILE_SIZE)
+      "tile_size_m": 0.4   # optional (defaults to 0.4)
     }
     Returns:
     {
-      "counts": {"DUa597": 12, ...},
-      "subtotal": {"DUa597": 12*5.99, ...},
+      "counts": {"DUa597": 12, ...},        # raw cell counts
+      "tiles": {"DUa597": 54, ...},         # corrected tile counts
+      "subtotal": {"DUa597": 54*5.99, ...},
       "total": 123.45
     }
     """
@@ -87,25 +71,39 @@ def api_calculate():
         return jsonify({"error": "missing grid"}), 400
 
     grid = data["grid"]
-    tile_size_m = data.get("tile_size_m", TILE_SIZE)
+    tile_size = float(data.get("tile_size_m", 0.4))
+    cell_area = tile_size * tile_size
 
     counts = {}
-    total = 0.0
     for row in grid:
         for code in row:
             if code:
                 counts[code] = counts.get(code, 0) + 1
 
+    tiles_needed = {}
     subtotals = {}
-    for code, qty in counts.items():
-        price = products.get(code, {}).get("price", 0) or 0
-        subtotal = qty * price
-        subtotals[code] = round(subtotal, 2)
+    total = 0.0
+
+    for code, cell_count in counts.items():
+        product = products.get(code)
+        if not product:
+            continue
+
+        prod_w, prod_h = product["size"]
+        prod_area = prod_w * prod_h
+
+        painted_area = cell_count * cell_area
+        needed_tiles = math.ceil(painted_area / prod_area)
+        subtotal = needed_tiles * product["price"]
+
+        tiles_needed[code] = needed_tiles
+        subtotals[code] = subtotal
         total += subtotal
 
     return jsonify({
         "counts": counts,
-        "subtotals": subtotals,
+        "tiles": tiles_needed,
+        "subtotal": subtotals,
         "total": round(total, 2)
     })
 
