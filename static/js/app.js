@@ -1,7 +1,7 @@
-const PIXEL_SIZE = 40;
-const TILE_SIZE = 0.4;
+const PIXEL_SIZE = 40; // keep in sync with backend
+const TILE_SIZE = 0.4; // meters
 
-let products = {};
+let products = {}; // will be fetched from /api/products
 let selectedCode = null;
 let eraserMode = false;
 
@@ -13,13 +13,10 @@ const generateBtn = document.getElementById("generate");
 const calcBtn = document.getElementById("calculate");
 const resultsEl = document.getElementById("results");
 const eraseBtn = document.getElementById("erase");
-const downloadBtn = document.getElementById("download"); // 👈 new button
 
 let cols = 0, rows = 0;
-let grid = [];
+let grid = []; // 2D array of codes
 let painting = false;
-
-const imageCache = {};
 
 async function fetchProducts() {
   const resp = await fetch("/api/products");
@@ -65,10 +62,12 @@ function buildPalette() {
 
 function setSelected(code) {
   selectedCode = code;
+  // mark selected
   document.querySelectorAll(".tile-btn").forEach(el => el.classList.remove("selected"));
   const el = document.querySelector(`.tile-btn[data-code="${code}"]`);
   if (el) el.classList.add("selected");
 
+  // update preview
   const p = products[code];
   previewEl.innerHTML = "";
   if (p.image) {
@@ -94,7 +93,7 @@ function generateGrid() {
   const h = parseFloat(document.getElementById("height").value) || 0;
   cols = Math.max(1, Math.ceil(w / TILE_SIZE));
   rows = Math.max(1, Math.ceil(h / TILE_SIZE));
-  grid = Array.from({ length: rows }, () => Array(cols).fill(""));
+  grid = Array.from({length: rows}, () => Array(cols).fill(""));
 
   canvas.width = cols * PIXEL_SIZE;
   canvas.height = rows * PIXEL_SIZE;
@@ -102,53 +101,40 @@ function generateGrid() {
 }
 
 function drawGrid() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0,0,canvas.width, canvas.height);
   ctx.strokeStyle = "#bbb";
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x = c * PIXEL_SIZE;
-      const y = r * PIXEL_SIZE;
+  for (let r=0;r<rows;r++){
+    for (let c=0;c<cols;c++){
+      const x = c*PIXEL_SIZE, y = r*PIXEL_SIZE;
       const code = grid[r][c];
-
       if (code) {
         const p = products[code];
         if (p.image) {
-          let img = imageCache[code];
-          if (!img) {
-            img = new Image();
-            img.src = "/static/" + p.image;
-            imageCache[code] = img;
-            img.onload = () => drawGrid();
-          }
-          if (img.complete) {
-            ctx.drawImage(img, x, y, PIXEL_SIZE, PIXEL_SIZE);
-          } else {
-            ctx.fillStyle = p.css_color || "#ddd";
-            ctx.fillRect(x, y, PIXEL_SIZE, PIXEL_SIZE);
-          }
+          const img = new Image();
+          img.src = "/static/" + p.image;
+          img.onload = () => ctx.drawImage(img, x, y, PIXEL_SIZE, PIXEL_SIZE);
         } else {
           ctx.fillStyle = p.css_color || "#ddd";
-          ctx.fillRect(x, y, PIXEL_SIZE, PIXEL_SIZE);
+          ctx.fillRect(x,y,PIXEL_SIZE,PIXEL_SIZE);
         }
       } else {
         ctx.fillStyle = "#fff";
-        ctx.fillRect(x, y, PIXEL_SIZE, PIXEL_SIZE);
+        ctx.fillRect(x,y,PIXEL_SIZE,PIXEL_SIZE);
       }
-      ctx.strokeRect(x, y, PIXEL_SIZE, PIXEL_SIZE);
+      ctx.strokeRect(x,y,PIXEL_SIZE,PIXEL_SIZE);
     }
   }
 }
 
-// Painting logic
-canvas.addEventListener("mousedown", e => {
+// canvas painting handlers
+canvas.addEventListener("mousedown", (e) => {
   painting = true;
   paintAtEvent(e);
 });
-canvas.addEventListener("mousemove", e => {
+canvas.addEventListener("mousemove", (e) => {
   if (painting) paintAtEvent(e);
 });
-document.addEventListener("mouseup", () => (painting = false));
+document.addEventListener("mouseup", () => { painting = false; });
 
 function paintAtEvent(e) {
   const rect = canvas.getBoundingClientRect();
@@ -156,8 +142,12 @@ function paintAtEvent(e) {
   const y = e.clientY - rect.top;
   const c = Math.floor(x / PIXEL_SIZE);
   const r = Math.floor(y / PIXEL_SIZE);
-  if (r >= 0 && r < rows && c >= 0 && c < cols) {
-    grid[r][c] = eraserMode ? "" : selectedCode;
+  if (r>=0 && r<rows && c>=0 && c<cols) {
+    if (eraserMode) {
+      grid[r][c] = "";
+    } else if (selectedCode) {
+      grid[r][c] = selectedCode;
+    }
     drawGrid();
   }
 }
@@ -170,69 +160,46 @@ eraseBtn.addEventListener("click", () => {
   previewEl.innerHTML = "Eraser";
 });
 
-generateBtn.addEventListener("click", generateGrid);
+generateBtn.addEventListener("click", () => {
+  generateGrid();
+});
 
 calcBtn.addEventListener("click", async () => {
   const resp = await fetch("/api/calculate", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ grid, tile_size_m: TILE_SIZE }),
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({grid: grid, tile_size_m: TILE_SIZE})
   });
   const data = await resp.json();
-  if (data.error) {
-    resultsEl.textContent = data.error;
-    return;
-  }
+  if (data.error) { resultsEl.textContent = data.error; return; }
   let text = "";
   for (const [code, qty] of Object.entries(data.counts)) {
     const price = products[code].price || 0;
-    const subtotal = data.subtotals[code] || qty * price;
+    const subtotal = data.subtotals[code] || (qty*price);
     text += `${code}: ${qty} tiles × ${price.toFixed(2)} лв = ${subtotal.toFixed(2)} лв\n`;
   }
   text += `\nTotal: ${data.total.toFixed(2)} лв`;
   resultsEl.textContent = text;
 });
 
-// 🔥 HD Export Feature
-downloadBtn.addEventListener("click", () => {
-  const scale = 8; // export scale multiplier
-  const exportCanvas = document.createElement("canvas");
-  exportCanvas.width = cols * PIXEL_SIZE * scale;
-  exportCanvas.height = rows * PIXEL_SIZE * scale;
-  const ectx = exportCanvas.getContext("2d");
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x = c * PIXEL_SIZE * scale;
-      const y = r * PIXEL_SIZE * scale;
-      const code = grid[r][c];
-
-      if (code && products[code].image) {
-        const img = imageCache[code];
-        if (img && img.complete) {
-          ectx.drawImage(img, x, y, PIXEL_SIZE * scale, PIXEL_SIZE * scale);
-        } else {
-          ectx.fillStyle = products[code].css_color || "#ddd";
-          ectx.fillRect(x, y, PIXEL_SIZE * scale, PIXEL_SIZE * scale);
-        }
-      } else {
-        ectx.fillStyle = "#fff";
-        ectx.fillRect(x, y, PIXEL_SIZE * scale, PIXEL_SIZE * scale);
-      }
-      ectx.strokeStyle = "#aaa";
-      ectx.strokeRect(x, y, PIXEL_SIZE * scale, PIXEL_SIZE * scale);
-    }
-  }
-
-  const link = document.createElement("a");
-  link.download = "garage-floor-HD.png";
-  link.href = exportCanvas.toDataURL("image/png");
-  link.click();
-});
-
-// Init
+// init
 (async () => {
   await fetchProducts();
   await buildPalette();
   generateGrid();
 })();
+
+// ✅ HD export button
+document.getElementById("downloadHD").addEventListener("click", () => {
+  const scale = 4; // 4x resolution
+  const hdCanvas = document.createElement("canvas");
+  hdCanvas.width = canvas.width * scale;
+  hdCanvas.height = canvas.height * scale;
+  const hdCtx = hdCanvas.getContext("2d");
+  hdCtx.scale(scale, scale);
+  hdCtx.drawImage(canvas, 0, 0);
+  const link = document.createElement("a");
+  link.download = "floorplan_hd.png";
+  link.href = hdCanvas.toDataURL("image/png");
+  link.click();
+});
