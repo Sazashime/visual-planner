@@ -1,14 +1,13 @@
-# app.py
 from flask import Flask, render_template, jsonify, request
-import os, math
+import os
 from products import products
 
 # Config
-IMG_FOLDER = os.path.join("static", "img")
-PIXEL_SIZE = 40  # pixels per tile on canvas (frontend uses same)
+IMG_FOLDER = os.path.join("static", "fimg")  # 👈 use new folder
+PIXEL_SIZE = 40  # pixels per tile on canvas
 TILE_SIZE = 0.4  # meters per tile
 
-# Color map (same as the Tkinter app)
+# Color map for fallback
 COLOR_MAP = {
     "черна": "black",
     "светло синя": "lightblue",
@@ -36,14 +35,13 @@ COLOR_MAP = {
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
 def find_image_for_code(code):
-    """Fuzzy match: return filename (relative to static/img) if any file contains code (case-insensitive)"""
+    """Find tile image inside /static/fimg by filename match"""
     if not os.path.isdir(IMG_FOLDER):
         return None
     code_lower = code.lower()
     for fn in os.listdir(IMG_FOLDER):
-        low = fn.lower()
-        if code_lower in low and low.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
-            return os.path.join("img", fn)  # path relative to /static
+        if code_lower in fn.lower() and fn.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+            return os.path.join("fimg", fn)  # relative to /static
     return None
 
 @app.route("/")
@@ -52,7 +50,7 @@ def index():
 
 @app.route("/api/products")
 def api_products():
-    """Return products with resolved image path (if found) and color (mapped to CSS color)."""
+    """Return products with resolved image path and color fallback."""
     out = {}
     for code, data in products.items():
         img = find_image_for_code(code)
@@ -61,7 +59,7 @@ def api_products():
         out[code] = {
             "name": data.get("name"),
             "price": data.get("price"),
-            "image": img,      # relative to /static
+            "image": img,
             "color_key": color_key,
             "css_color": css_color
         }
@@ -69,61 +67,30 @@ def api_products():
 
 @app.route("/api/calculate", methods=["POST"])
 def api_calculate():
-    """
-    Expects JSON:
-    {
-      "grid": [["DUa597","DUa597",""], [...]],
-      "tile_size_m": 0.4   # optional (defaults to TILE_SIZE)
-    }
-    Returns:
-    {
-      "counts": {"DUa597": 12, ...},           # raw number of grid cells
-      "adjusted_counts": {"DUa653": 10, ...}, # adjusted for real tile size
-      "subtotal": {"DUa597": 12*5.99, ...},
-      "total": 123.45
-    }
-    """
     data = request.get_json()
     if not data or "grid" not in data:
         return jsonify({"error": "missing grid"}), 400
 
     grid = data["grid"]
-    grid_tile_size = data.get("tile_size_m", TILE_SIZE)
+    tile_size_m = data.get("tile_size_m", TILE_SIZE)
 
-    counts = {}           # raw counts from grid
+    counts = {}
     total = 0.0
-
-    # Count how many grid cells each tile code occupies
     for row in grid:
         for code in row:
             if code:
                 counts[code] = counts.get(code, 0) + 1
 
-    adjusted_counts = {}
     subtotals = {}
-
     for code, qty in counts.items():
-        prod = products.get(code, {})
-        price = prod.get("price", 0) or 0
-        tile_width, tile_height = prod.get("size", (grid_tile_size, grid_tile_size))
-
-        # Correction factor: how many real tiles are needed to cover same area
-        # (grid_tile_area / actual_tile_area) * qty
-        grid_area = grid_tile_size * grid_tile_size
-        tile_area = tile_width * tile_height
-        correction_factor = grid_area / tile_area if tile_area else 1.0
-
-        adjusted_qty = math.ceil(qty * correction_factor)
-
-        subtotal = adjusted_qty * price
+        price = products.get(code, {}).get("price", 0) or 0
+        subtotal = qty * price
         subtotals[code] = round(subtotal, 2)
         total += subtotal
-        adjusted_counts[code] = adjusted_qty
 
     return jsonify({
         "counts": counts,
-        "adjusted_counts": adjusted_counts,
-        "subtotal": subtotals,
+        "subtotals": subtotals,
         "total": round(total, 2)
     })
 
