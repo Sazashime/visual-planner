@@ -13,12 +13,13 @@ const generateBtn = document.getElementById("generate");
 const calcBtn = document.getElementById("calculate");
 const resultsEl = document.getElementById("results");
 const eraseBtn = document.getElementById("erase");
+const downloadBtn = document.getElementById("download"); // 👈 new button
 
 let cols = 0, rows = 0;
 let grid = [];
 let painting = false;
 
-const imageCache = {}; // 👈 cache loaded images
+const imageCache = {};
 
 async function fetchProducts() {
   const resp = await fetch("/api/products");
@@ -190,6 +191,43 @@ calcBtn.addEventListener("click", async () => {
   }
   text += `\nTotal: ${data.total.toFixed(2)} лв`;
   resultsEl.textContent = text;
+});
+
+// 🔥 HD Export Feature
+downloadBtn.addEventListener("click", () => {
+  const scale = 8; // export scale multiplier
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = cols * PIXEL_SIZE * scale;
+  exportCanvas.height = rows * PIXEL_SIZE * scale;
+  const ectx = exportCanvas.getContext("2d");
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = c * PIXEL_SIZE * scale;
+      const y = r * PIXEL_SIZE * scale;
+      const code = grid[r][c];
+
+      if (code && products[code].image) {
+        const img = imageCache[code];
+        if (img && img.complete) {
+          ectx.drawImage(img, x, y, PIXEL_SIZE * scale, PIXEL_SIZE * scale);
+        } else {
+          ectx.fillStyle = products[code].css_color || "#ddd";
+          ectx.fillRect(x, y, PIXEL_SIZE * scale, PIXEL_SIZE * scale);
+        }
+      } else {
+        ectx.fillStyle = "#fff";
+        ectx.fillRect(x, y, PIXEL_SIZE * scale, PIXEL_SIZE * scale);
+      }
+      ectx.strokeStyle = "#aaa";
+      ectx.strokeRect(x, y, PIXEL_SIZE * scale, PIXEL_SIZE * scale);
+    }
+  }
+
+  const link = document.createElement("a");
+  link.download = "garage-floor-HD.png";
+  link.href = exportCanvas.toDataURL("image/png");
+  link.click();
 });
 
 // Init
